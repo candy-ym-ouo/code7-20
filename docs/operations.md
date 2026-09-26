@@ -38,6 +38,21 @@
 6. 再切换 Caddy 流量。
 7. 保留上一版本镜像用于回滚。
 
+## 搜索索引
+
+搜索索引（`search_documents`）是只读反范式表，由 Worker 异步维护，业务表上的写入事务只往 `search_index_changes` 追加一行变更。
+
+- Worker 每 5 秒排空一次变更队列（`FOR UPDATE SKIP LOCKED` 批量认领），多个 Worker 可并发消费而不重复处理。
+- 升级到包含搜索模块的版本后，迁移会自动建好表和触发器；积压的历史内容需要执行一次在线全量重建：
+
+  ```bash
+  pnpm search:rebuild
+  # 或由管理员调用 POST /api/v1/search/reindex，Worker 会在后台追平
+  ```
+
+- 全量重建采用“快照入队 → 排空 → 清理孤儿文档”，全程不锁业务表、不要求停写；重建期间的写入照常入队并被处理。可通过 `GET /api/v1/search/reindex` 查看状态。
+- 监控建议：`search_index_changes` 行数持续增长说明 Worker 未在消费；`search_index_rebuilds.status` 长时间停留在 `indexing` 说明追平异常。
+
 ## 隐私事件
 
 发现未模糊媒体或原图泄露时：

@@ -1,0 +1,27 @@
+{
+  "name": "@map/search",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./pinyin": "./src/pinyin.ts",
+    "./cursor": "./src/cursor.ts",
+    "./query": "./src/query.ts",
+    "./indexer": "./src/indexer.ts",
+    "./rebuild": "./src/rebuild.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "pinyin-pro": "3.26.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/pg": "^8.15.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

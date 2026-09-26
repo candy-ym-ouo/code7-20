@@ -15,6 +15,7 @@
     "verify": "pnpm lint && pnpm test && pnpm build",
     "db:migrate": "pnpm --filter @map/db migrate",
     "db:seed": "pnpm --filter @map/db seed",
+    "search:rebuild": "pnpm --filter @map/worker search:rebuild",
     "admin:create": "pnpm --filter @map/db admin:create"
   },
   "devDependencies": {

@@ -5,6 +5,7 @@ import { pool } from "./db";
 import { processMediaJob, cleanupOriginalMedia, cleanupDeletedMediaObjects, markStaleFeatures, recoverStuckMedia, markUnreferencedMediaDeleted } from "./media-job";
 import { dispatchOutbox, recoverStuckOutbox } from "./outbox";
 import { purgeDeletedAccounts } from "./account-job";
+import { syncSearchIndex } from "./search-job";
 
 const redisOptions = { maxRetriesPerRequest: null } as const;
 const queueConnection = new IORedis(config.REDIS_URL, redisOptions);
@@ -70,13 +71,31 @@ async function maintenanceTick() {
   }
 }
 
+// 搜索索引走更短的轮询间隔，保证提交后尽快可搜，且与重型维护任务解耦。
+let searchRunning = false;
+async function searchTick() {
+  if (searchRunning) return;
+  searchRunning = true;
+  try {
+    await syncSearchIndex();
+  } catch (error) {
+    console.error({ error }, "search index sync failed");
+  } finally {
+    searchRunning = false;
+  }
+}
+
 await maintenanceTick();
 const maintenanceTimer = setInterval(() => void maintenanceTick(), 60_000);
 maintenanceTimer.unref();
+await searchTick();
+const searchTimer = setInterval(() => void searchTick(), 5_000);
+searchTimer.unref();
 
 async function shutdown(signal: string) {
   console.log(`worker shutting down: ${signal}`);
   clearInterval(maintenanceTimer);
+  clearInterval(searchTimer);
   await Promise.all([mediaWorker.close(), outboxWorker.close(), mediaQueue.close()]);
   for (const connection of [queueConnection, mediaWorkerConnection, outboxWorkerConnection]) {
     if (connection.status !== "end") connection.disconnect();

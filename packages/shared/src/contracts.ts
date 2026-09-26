@@ -212,6 +212,24 @@ export const confirmationSchema = z.object({
   note: z.string().trim().max(500).optional()
 });
 
+export const searchQuerySchema = z.object({
+  q: z.string().trim().min(1).max(100).optional(),
+  type: z.enum(["feature", "comment"]).optional(),
+  category: z.string().trim().min(1).max(200).optional(),
+  tag: z.string().trim().min(1).max(200).optional(),
+  sort: z.enum(["relevance", "newest"]).default("relevance"),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+  cursor: z.string().trim().min(1).max(500).optional()
+});
+export type SearchQueryInput = z.infer<typeof searchQuerySchema>;
+
+export function splitCsv(value: string | undefined, max = 10): string[] {
+  if (!value) return [];
+  return [...new Set(
+    value.split(",").map((item) => item.trim()).filter(Boolean)
+  )].slice(0, max);
+}
+
 export const categoryDefinitions = [
   {
     key: "bench",

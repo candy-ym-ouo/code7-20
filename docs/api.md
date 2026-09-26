@@ -17,10 +17,67 @@
 | `GET` | `/features/:id` | 已发布详情；作者和审核员可查看私有状态 |
 | `GET` | `/features/:id/comments` | 已发布评论 |
 | `GET` | `/features/:id/confirmations` | 时效确认汇总 |
+| `GET` | `/search` | 地点与评论全文检索（中文、拼音、标签、分类） |
 | `GET` | `/health/live` | 进程存活 |
 | `GET` | `/health/ready` | 数据库就绪 |
 
-## 账号接口
+## 全文检索
+
+`GET /api/v1/search` 同时检索地点与评论，支持组合过滤与稳定键集分页。
+
+| 参数 | 说明 |
+|---|---|
+| `q` | 关键词，1–100 字符。多个词项之间为 AND |
+| `type` | `feature` 或 `comment`，缺省两者都搜 |
+| `category` | 分类 key，逗号分隔取并集（如 `bench,drinking_water`） |
+| `tag` | 标签，逗号分隔取交集 |
+| `sort` | `relevance`（默认）或 `newest` |
+| `limit` | 每页条数，1–50，默认 20 |
+| `cursor` | 上一页返回的 `nextCursor` 不透明游标 |
+
+匹配能力：
+
+- **中文**：按单字与相邻双字切分。`朝阳` 命中“朝阳公园”，`长椅 休息` 要求两个词项都命中，不会跨空格产生“椅休”之类的噪声词。
+- **拼音**：支持全拼（`changyi`、`chang yi`）、紧凑全拼包含匹配（`hangyi`）和首字母前缀（`cygy`）；`ü` 写作 `v`（绿色 → `lvse` / `ls`）。多音字按上下文消歧（“长椅”→ `chang yi`）。
+- **拉丁词与数字**：按整词匹配，如 `fountain`、`3`。
+- 评论文档继承所属地点的标题/分类文本，因此用地点关键词也能找到其评论。
+
+权限与可见性在**查询层**按调用者身份过滤，索引本身不做权限决策：
+
+- 匿名：只返回 `published` 且未软删的内容；评论还要求所属地点为 `published`。
+- 登录用户：额外可见自己的草稿、待审/被拒/隐藏内容。
+- 审核员/管理员：可见所有未软删状态。
+
+响应：
+
+```json
+{
+  "items": [
+    {
+      "type": "feature",
+      "id": "…", "featureId": "…",
+      "status": "published", "categoryKey": "bench",
+      "title": "…", "snippet": "…", "body": null,
+      "authorName": "…", "tags": ["休息"],
+      "longitude": 116.4, "latitude": 39.9,
+      "sortAt": "2026-09-26T01:00:00.000Z"
+    }
+  ],
+  "nextCursor": "eyJzb3J0IjoibmV3ZXN0Iiwi…"
+}
+```
+
+- 排序在相关性模式下为 `(score, sort_at, type, id)`，最新模式下为 `(sort_at, type, id)`；末尾三元组恒定唯一，因此翻页期间即使文档重新索引也不会重复或跳项。
+- 没有下一页时 `nextCursor` 为 `null`。游标与 `sort` 绑定，混用会返回空页。
+
+索引由 Worker 异步维护（业务写入事务只入队一行轻量变更，不被索引刷新阻塞）：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `POST` | `/search/reindex` | 管理员触发在线全量重建（快照入队，Worker 排空并清理孤儿文档，不阻塞写入） |
+| `GET` | `/search/reindex` | 管理员查看最近重建状态与积压变更数 |
+
+
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
