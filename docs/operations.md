@@ -20,6 +20,15 @@
 - outbox `pending`、`failed` 数量。
 - `delete_after <= now()` 的原图数量。
 - 公开桶中是否存在未被数据库引用的对象。
+- 检索索引滞后：`GET /api/v1/admin/search/status` 中检查点与当前时间的差值（正常 < 1 分钟）。
+
+## 检索索引
+
+- 索引存储在 `search_documents` 表，由 Worker 每 15 秒增量同步（批量 upsert），每 60 秒清理已删除内容的文档。
+- 索引表不建外键，内容写入不等待索引；可见性由查询层按内容表实时过滤，索引滞后不会泄露未公开内容。
+- 全量重建：`POST /api/v1/admin/search/reindex`（管理员）。重建在 Worker 中分批小事务执行，不清空索引表，重建期间查询与写入均不受影响；通过 `GET /api/v1/admin/search/status` 观察进度。
+- 首次部署或迁移 `0003_search_documents.sql` 后应触发一次全量重建，将存量内容纳入索引。
+- 同步水位为 5 秒：超过 5 秒未提交的长事务中的变更会在下一同步周期被拾起；极端情况下可通过全量重建兜底。
 
 ## 备份
 

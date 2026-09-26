@@ -32,4 +32,18 @@ describe("initial migration", () => {
     expect(migration).toContain("geography(Point, 4326)");
     expect(migration).toContain("USING gist (geom)");
   });
+
+  it("adds the search document store in migration 0003", () => {
+    const search = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../migrations/0003_search_documents.sql"),
+      "utf8"
+    );
+    expect(search).toContain("CREATE EXTENSION IF NOT EXISTS pg_trgm");
+    expect(search).toContain("CREATE TABLE search_documents");
+    expect(search).toContain("CREATE TABLE search_sync_state");
+    // 拼音与中文子串依赖三元组索引
+    expect(search).toContain("gin_trgm_ops");
+    // 索引表不建外键，避免索引维护阻塞内容写入
+    expect(search).not.toContain("REFERENCES");
+  });
 });

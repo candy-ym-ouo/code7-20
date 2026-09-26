@@ -8,6 +8,7 @@ import { optionalAuth, requireAuth, requireVerifiedContributor } from "../auth";
 import { deleteObject, publicMediaUrl } from "../storage";
 import { config } from "../config";
 import { recordAudit } from "../audit";
+import { bboxFromString } from "../geo";
 
 type MediaRow = {
   id: string;
@@ -52,21 +53,6 @@ async function replaceRevisionMedia(client: PoolClient, revisionId: string, medi
       [revisionId, mediaId, index]
     );
   }
-}
-
-function bboxFromString(value: string): [number, number, number, number] {
-  const parts = value.split(",").map(Number);
-  if (parts.length !== 4 || parts.some((item) => !Number.isFinite(item))) {
-    throw new AppError(400, "VALIDATION_FAILED", "bbox must contain four numbers");
-  }
-  const [minLon, minLat, maxLon, maxLat] = parts as [number, number, number, number];
-  if (minLon === maxLon || minLat >= maxLat) throw new AppError(400, "VALIDATION_FAILED", "Invalid bbox order");
-  if (minLon < -180 || maxLon > 180 || minLat < -90 || maxLat > 90) {
-    throw new AppError(400, "VALIDATION_FAILED", "bbox is outside valid longitude/latitude ranges");
-  }
-  const longitudeSpan = minLon > maxLon ? 360 - minLon + maxLon : maxLon - minLon;
-  if (longitudeSpan > 5 || maxLat - minLat > 5) throw new AppError(400, "VALIDATION_FAILED", "bbox is too large");
-  return [minLon, minLat, maxLon, maxLat];
 }
 
 export async function featureRoutes(app: FastifyInstance) {

@@ -88,3 +88,29 @@
 | `POST` | `/moderation/comments/:id/hide` | 隐藏评论 |
 | `POST` | `/moderation/reports/:id/resolve` | 处理举报 |
 | `GET` | `/moderation/audit` | 管理员审计日志 |
+
+## 检索接口
+
+`GET /search` 对地点与评论做全文检索，支持中文子串、拼音（全拼与首字母）、标签与分类组合过滤。
+
+| 参数 | 说明 |
+|---|---|
+| `q` | 查询词（可选）。中文走子串匹配；拉丁输入同时匹配拼音（如 `changyi`、`cy`）与原文词 |
+| `type` | `feature` 或 `comment`，缺省同时检索两类 |
+| `category` | 分类 key，逗号分隔（评论继承所属地点的分类） |
+| `tags` | 标签，逗号分隔，多个标签为与关系（评论继承所属地点的标签） |
+| `bbox` | 可选地理范围，同地图查询规则 |
+| `visibility` | 默认 `published`；`all` 仅审核员/管理员可用，含隐藏与待审核内容 |
+| `limit` | 1–50，默认 20 |
+| `cursor` | 上一页响应的 `nextCursor`，换查询条件必须重新翻页 |
+
+- 响应：`{ items: [...], nextCursor: string | null }`；`items` 含 `type`、`id`、`featureId`、`title`、`snippet`、`tags`、坐标与 `rank`。
+- 权限过滤在查询层完成：索引可能短暂滞后，但结果实时按内容当前状态过滤，未公开内容不会泄露。
+- 分页为 keyset 游标（有查询词按 `(rank, id)`，无查询词按 `(更新时间, id)`），翻页期间写入不会造成重复或遗漏；`cursor` 与查询条件绑定，条件变化后复用旧游标返回 400。
+- 该路由限流 60 次/分钟。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/search` | 全文检索（见上） |
+| `POST` | `/admin/search/reindex` | 管理员触发全量索引重建（202，后台分批执行，不阻塞写入） |
+| `GET` | `/admin/search/status` | 管理员查看索引文档数与同步检查点 |

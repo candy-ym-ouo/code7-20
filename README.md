@@ -4,6 +4,7 @@
 
 - 前端：Vue 3、TypeScript、Vite、MapLibre GL JS、Pinia。
 - 后端：Node.js、Fastify、PostgreSQL/PostGIS、Redis/BullMQ。
+- 检索：PostgreSQL 全文检索（pg_trgm + tsvector），支持中文子串、拼音/首字母、标签与分类组合；索引由 Worker 异步分批维护，重建不阻塞写入，权限过滤在查询层完成。
 - 媒体：MinIO/S3 私有隔离区与服务公开桶、Sharp 服务端模糊、ClamAV 扫描。
 - 审核：投稿、评论、媒体隐私和举报均进入真实审核队列。
 - 原则：没有 mock 数据、没有内存数据库、没有绕过审核的发布路径。
@@ -80,6 +81,7 @@ pnpm build
 ```bash
 curl http://localhost:3000/health/ready
 curl 'http://localhost:3000/api/v1/features?bbox=116.30,39.80,116.50,40.00'
+curl 'http://localhost:3000/api/v1/search?q=changyi&tags=安静'
 ```
 
 ## 地图瓦片

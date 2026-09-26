@@ -5,16 +5,19 @@ import { pool } from "./db";
 import { processMediaJob, cleanupOriginalMedia, cleanupDeletedMediaObjects, markStaleFeatures, recoverStuckMedia, markUnreferencedMediaDeleted } from "./media-job";
 import { dispatchOutbox, recoverStuckOutbox } from "./outbox";
 import { purgeDeletedAccounts } from "./account-job";
+import { purgeStaleDocuments, rebuildSearchIndexes, runSearchSyncTick } from "./search-job";
 
 const redisOptions = { maxRetriesPerRequest: null } as const;
 const queueConnection = new IORedis(config.REDIS_URL, redisOptions);
 const mediaWorkerConnection = new IORedis(config.REDIS_URL, redisOptions);
 const outboxWorkerConnection = new IORedis(config.REDIS_URL, redisOptions);
+const searchWorkerConnection = new IORedis(config.REDIS_URL, redisOptions);
 
 for (const [name, connection] of [
   ["queue", queueConnection],
   ["media worker", mediaWorkerConnection],
-  ["outbox worker", outboxWorkerConnection]
+  ["outbox worker", outboxWorkerConnection],
+  ["search worker", searchWorkerConnection]
 ] as const) {
   connection.on("error", (error) => console.error({ error, connection: name }, "Redis connection error"));
 }
@@ -30,8 +33,14 @@ const outboxWorker = new Worker("outbox", async (job) => {
   await dispatchOutbox(job.data?.eventId ? String(job.data.eventId) : undefined);
 }, { connection: outboxWorkerConnection, concurrency: 2 });
 
+const searchWorker = new Worker("search", async (job) => {
+  if (job.name !== "rebuild") return;
+  await rebuildSearchIndexes();
+}, { connection: searchWorkerConnection, concurrency: 1 });
+
 mediaWorker.on("failed", (job, error) => console.error({ jobId: job?.id, error }, "media job failed"));
 outboxWorker.on("failed", (job, error) => console.error({ jobId: job?.id, error }, "outbox job failed"));
+searchWorker.on("failed", (job, error) => console.error({ jobId: job?.id, error }, "search job failed"));
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return Promise.race([
@@ -63,6 +72,7 @@ async function maintenanceTick() {
     await cleanupDeletedMediaObjects();
     await markStaleFeatures();
     await purgeDeletedAccounts();
+    await purgeStaleDocuments();
   } catch (error) {
     console.error({ error }, "maintenance tick failed");
   } finally {
@@ -74,11 +84,17 @@ await maintenanceTick();
 const maintenanceTimer = setInterval(() => void maintenanceTick(), 60_000);
 maintenanceTimer.unref();
 
+// 检索索引增量同步独立高频运行（15s），保证新公开内容尽快可检索
+await runSearchSyncTick();
+const searchSyncTimer = setInterval(() => void runSearchSyncTick(), 15_000);
+searchSyncTimer.unref();
+
 async function shutdown(signal: string) {
   console.log(`worker shutting down: ${signal}`);
   clearInterval(maintenanceTimer);
-  await Promise.all([mediaWorker.close(), outboxWorker.close(), mediaQueue.close()]);
-  for (const connection of [queueConnection, mediaWorkerConnection, outboxWorkerConnection]) {
+  clearInterval(searchSyncTimer);
+  await Promise.all([mediaWorker.close(), outboxWorker.close(), searchWorker.close(), mediaQueue.close()]);
+  for (const connection of [queueConnection, mediaWorkerConnection, outboxWorkerConnection, searchWorkerConnection]) {
     if (connection.status !== "end") connection.disconnect();
   }
   await pool.end();
